@@ -1,0 +1,135 @@
+#!/bin/sh
+# omarchy-fanctl - narrowly-scoped root helper for the Omarchy "ASUS Fan" widget.
+#
+# Wraps asus-fan-control-ec (https://github.com/Keyitdev/asus-fan-control-ec)
+# for the ASUS embedded-controller fan interface and exposes exactly three
+# operations:
+#
+#   status          -> JSON snapshot: mode, percent, fan rpms, cpu temperature
+#   set <0-100>     -> put the fans in manual mode at the given duty
+#   auto            -> hand control back to the EC's own curve
+#
+# Nothing else is accepted, and the percent is validated here. The helper is
+# installed root-owned and the desktop user is granted NOPASSWD for this path
+# only, so the bar widget can invoke it via `sudo -n` without a prompt. Keep it
+# small and auditable: it is the only privileged surface of the widget.
+set -eu
+
+BIN=/usr/local/bin/asus-fan-control-ec
+
+hwmon_by_name() { # name -> path
+  for d in /sys/class/hwmon/hwmon*; do
+    [ -r "$d/name" ] || continue
+    if [ "$(cat "$d/name" 2>/dev/null)" = "$1" ]; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+  done
+  return 1
+}
+
+hwmon_with() { # file -> dir of first hwmon exposing that file
+  for d in /sys/class/hwmon/hwmon*; do
+    [ -r "$d/$1" ] && { printf '%s\n' "$d"; return 0; }
+  done
+  return 1
+}
+
+read_int() { # path -> digits only, or empty
+  [ -r "$1" ] || return 0
+  tr -dc '0-9' < "$1" 2>/dev/null
+}
+
+# CPU temperature in whole degrees C, or -1. Prefers the well-known CPU drivers,
+# then any hwmon with a temp1 sensor, then the ACPI thermal zone.
+read_temp() {
+  d=""
+  for n in k10temp coretemp zenpower zenpower3; do
+    if d=$(hwmon_by_name "$n"); then
+      raw=$(read_int "$d/temp1_input")
+      [ -n "$raw" ] && { echo $((raw / 1000)); return; }
+    fi
+  done
+  if d=$(hwmon_with temp1_input); then
+    raw=$(read_int "$d/temp1_input")
+    [ -n "$raw" ] && { echo $((raw / 1000)); return; }
+  fi
+  if [ -r /sys/class/thermal/thermal_zone0/temp ]; then
+    raw=$(read_int /sys/class/thermal/thermal_zone0/temp)
+    [ -n "$raw" ] && { echo $((raw / 1000)); return; }
+  fi
+  echo -1
+}
+
+# Fan RPMs. Some ASUS models expose fan1/fan2 under the "asus" hwmon; on others
+# the driver name differs, so fall back to any hwmon that has a fan1_input.
+read_fans() {
+  cpu=0; gpu=0
+  d=""
+  if d=$(hwmon_by_name asus); then :; elif d=$(hwmon_with fan1_input); then :; else
+    printf '%s %s\n' 0 0; return
+  fi
+  cpu=$(read_int "$d/fan1_input"); cpu=${cpu:-0}
+  gpu=$(read_int "$d/fan2_input"); gpu=${gpu:-0}
+  printf '%s %s\n' "$cpu" "$gpu"
+}
+
+read_duty_percent() { # fan-info output -> integer percent or -1
+  p=$(printf '%s\n' "$1" | sed -n 's/.*(\([0-9][0-9]*\)%).*/\1/p' | head -n1)
+  [ -n "$p" ] || p=-1
+  echo "$p"
+}
+
+emit_unavailable() { # reason
+  printf '{"available":false,"reason":"%s"}\n' "$1"
+}
+
+status() {
+  [ -x "$BIN" ] || { emit_unavailable helper-missing; return 0; }
+
+  info=$("$BIN" fan-info 2>/dev/null || true)
+
+  case "$info" in
+    ""|*"Fan count: unreadable"*) emit_unavailable unsupported; return 0 ;;
+  esac
+
+  mode=manual
+  case "$info" in
+    *automatic*) mode=auto ;;
+  esac
+
+  pct=$(read_duty_percent "$info")
+
+  cpu_rpm=0; gpu_rpm=0
+  fans=$(read_fans)
+  cpu_rpm=${fans%% *}; gpu_rpm=${fans##* }
+  cpu_rpm=${cpu_rpm:-0}; gpu_rpm=${gpu_rpm:-0}
+
+  temp=$(read_temp)
+  [ -n "$temp" ] || temp=-1
+
+  printf '{"available":true,"mode":"%s","percent":%s,"cpu_rpm":%s,"gpu_rpm":%s,"temp":%s}\n' \
+    "$mode" "$pct" "$cpu_rpm" "$gpu_rpm" "$temp"
+}
+
+set_percent() {
+  p=${1:-}
+  case "$p" in
+    ''|*[!0-9]*) echo "omarchy-fanctl: percent must be an integer 0-100" >&2; exit 2 ;;
+  esac
+  [ "$p" -le 100 ] || { echo "omarchy-fanctl: percent out of range" >&2; exit 2; }
+  [ -x "$BIN" ] || { echo "omarchy-fanctl: $BIN missing" >&2; exit 1; }
+  "$BIN" setp "$p" >/dev/null
+}
+
+set_auto() {
+  [ -x "$BIN" ] || { echo "omarchy-fanctl: $BIN missing" >&2; exit 1; }
+  "$BIN" set -1 >/dev/null
+}
+
+case "${1:-}" in
+  status) status ;;
+  set)    set_percent "${2:-}" ;;
+  auto)   set_auto ;;
+  *)      echo "usage: omarchy-fanctl status | set <0-100> | auto" >&2; exit 2 ;;
+esac

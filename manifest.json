@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "b5.fan",
+  "name": "ASUS Fan",
+  "version": "1.0.0",
+  "author": "b5",
+  "description": "Manual fan-speed slider for ASUS laptops, using the embedded controller via a privileged helper.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "ASUS Fan",
+    "description": "Fan speed slider, RPM and CPU temperature",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
