@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "b5.fan",
+  "id": "io.github.argo1619.asus-fan",
   "name": "ASUS Fan",
   "version": "1.0.0",
   "author": "b5",

@@ -10,7 +10,7 @@
 #         sudo ./uninstall.sh --purge
 #
 # The shell plugin itself is removed with:
-#   omarchy plugin remove b5.fan
+#   omarchy plugin remove io.github.argo1619.asus-fan
 set -eu
 
 BIN=/usr/local/bin/asus-fan-control-ec

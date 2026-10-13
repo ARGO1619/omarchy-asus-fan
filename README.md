@@ -73,11 +73,14 @@ Writing anything to an unsupported EC can be harmful. If you are not sure, stop.
 
 ## Install
 
-### 1. The privileged helper (root)
+### 1. The upstream binary (root, once)
 
-This installs `omarchy-fanctl`, the upstream binary (building it if needed) and a
-`sudoers` rule granting **only your user** passwordless access to **only that
-wrapper**:
+The widget drives [`asus-fan-control-ec`](https://github.com/Keyitdev/asus-fan-control-ec).
+Install it first, from the AUR (`asus-fan-control-ec-git`) or by building upstream
+yourself.
+
+Then install `omarchy-fanctl` and a `sudoers` rule that grants **only your user**
+passwordless access to **only that wrapper**:
 
 ```sh
 git clone https://github.com/ARGO1619/omarchy-asus-fan.git
@@ -85,12 +88,11 @@ cd omarchy-asus-fan
 sudo ./install.sh
 ```
 
-Options:
+`install.sh` never downloads anything. It uses an already installed
+`/usr/local/bin/asus-fan-control-ec`, or one you point it at:
 
-- `sudo AFC_BINARY=/path/to/asus-fan-control-ec ./install.sh` — use a binary you
-  built or installed yourself (e.g. from the AUR package
-  `asus-fan-control-ec-git`).
-- `sudo ./install.sh --no-build` — never build; fail if the binary is missing.
+- `sudo AFC_BINARY=/path/to/asus-fan-control-ec ./install.sh` — install a prebuilt binary.
+- `sudo AFC_SOURCE=/path/to/cloned/upstream ./install.sh` — build a **local** checkout.
 
 ### 2. The widget (user)
 
@@ -121,7 +123,7 @@ read-only and explains why in the popup.
 ```sh
 sudo ./uninstall.sh          # removes helper + sudoers rule
 sudo ./uninstall.sh --purge  # also removes asus-fan-control-ec
-omarchy plugin remove b5.fan
+omarchy plugin remove io.github.argo1619.asus-fan
 ```
 
 ---
@@ -133,8 +135,9 @@ omarchy plugin remove b5.fan
 - `helper/omarchy-fanctl` — the only privileged surface. It accepts exactly
   `status`, `set <0-100>`, and `auto`, validates its arguments, and shells out to
   `asus-fan-control-ec`.
-- `install.sh` — installs the wrapper, the upstream binary, and a `sudoers` rule
-  scoped to the wrapper and to your user.
+- `install.sh` — installs the wrapper and a `sudoers` rule scoped to the wrapper
+  and to your user, using an already installed (or supplied)
+  `asus-fan-control-ec` binary. It never downloads anything itself.
 
 Telemetry (RPM, temperature) is read from `hwmon` with automatic driver
 detection (`k10temp`/`coretemp`/`zenpower`, any `fan1_input` sensor, or the ACPI

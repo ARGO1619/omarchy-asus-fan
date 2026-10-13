@@ -17,8 +17,8 @@ import qs.Commons
 // reports it and the widget stays read-only too.
 Panel {
   id: root
-  moduleName: "b5.fan"
-  ipcTarget: "b5.fan"
+  moduleName: "io.github.argo1619.asus-fan"
+  ipcTarget: "io.github.argo1619.asus-fan"
 
   readonly property string helper: "/usr/local/bin/omarchy-fanctl"
 

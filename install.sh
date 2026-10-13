@@ -2,22 +2,25 @@
 # Installer for the Omarchy "ASUS Fan" bar widget.
 #
 # Installs, as root:
-#   /usr/local/bin/asus-fan-control-ec   the upstream EC fan tool (built from
-#                                         source if not already present)
+#   /usr/local/bin/asus-fan-control-ec   the upstream EC fan tool (must already
+#                                         be built: see below)
 #   /usr/local/bin/omarchy-fanctl        the narrowly-scoped wrapper this
 #                                         repository ships (helper/omarchy-fanctl)
 #   /etc/sudoers.d/omarchy-fanctl        NOPASSWD for omarchy-fanctl, for the
 #                                         desktop user only
 #
-# Usage:  sudo ./install.sh
-#         sudo AFC_BINARY=/path/to/asus-fan-control-ec ./install.sh
-#         sudo ./install.sh --no-build
+# This script never downloads anything. Obtain asus-fan-control-ec first, either
+# from the AUR (asus-fan-control-ec-git), by building it yourself, or by pointing
+# at a prebuilt binary:
+#
+#   sudo ./install.sh                          # use an already installed binary
+#   sudo AFC_BINARY=/path/to/asus-fan-control-ec ./install.sh
+#   sudo AFC_SOURCE=/path/to/cloned/upstream ./install.sh   # build a local checkout
 #
 # The widget itself is a shell plugin; install it separately with:
 #   omarchy plugin add <this repo url> --enable
 set -eu
 
-UPSTREAM=https://github.com/Keyitdev/asus-fan-control-ec.git
 BIN=/usr/local/bin/asus-fan-control-ec
 WRAPPER=/usr/local/bin/omarchy-fanctl
 SUDOERS=/etc/sudoers.d/omarchy-fanctl
@@ -34,22 +37,12 @@ USER_NAME=${SUDO_USER:-$(logname 2>/dev/null || true)}
 [ -n "$USER_NAME" ] && [ "$USER_NAME" != root ] ||
   die "could not determine the desktop user; re-run with: sudo SUDO_USER=<name> ./install.sh"
 
-ALLOW_BUILD=1
-[ "${1:-}" = "--no-build" ] && ALLOW_BUILD=0
-
-need_build_tools() {
-  command -v git >/dev/null 2>&1 && command -v make >/dev/null 2>&1 &&
-    { command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; }
-}
-
-build_upstream() {
-  need_build_tools || die "missing build tools (git/make/cc). Install them, or pass AFC_BINARY=/path/to/asus-fan-control-ec"
-  tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' EXIT INT TERM
-  echo "Building asus-fan-control-ec from $UPSTREAM ..."
-  git clone --depth 1 "$UPSTREAM" "$tmp/afc" >/dev/null 2>&1 || die "git clone failed"
-  make -C "$tmp/afc" >/dev/null || die "build failed"
-  install -Dm0755 "$tmp/afc/asus-fan-control-ec" "$BIN"
+build_local() { # build a local upstream checkout
+  [ -d "$1" ] || die "AFC_SOURCE is not a directory: $1"
+  command -v make >/dev/null 2>&1 || die "make is required to build from AFC_SOURCE"
+  { command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; } || die "a C compiler is required to build from AFC_SOURCE"
+  make -C "$1" >/dev/null || die "build failed in $1"
+  install -Dm0755 "$1/asus-fan-control-ec" "$BIN"
 }
 
 if [ -n "${AFC_BINARY:-}" ]; then
@@ -57,10 +50,15 @@ if [ -n "${AFC_BINARY:-}" ]; then
   install -Dm0755 "$AFC_BINARY" "$BIN"
 elif [ -x "$BIN" ]; then
   echo "Keeping existing $BIN"
-elif [ "$ALLOW_BUILD" -eq 1 ]; then
-  build_upstream
+elif [ -n "${AFC_SOURCE:-}" ]; then
+  build_local "$AFC_SOURCE"
 else
-  die "$BIN not found and --no-build was given"
+  die "asus-fan-control-ec is not installed.
+Install it first (any of):
+  * AUR:            asus-fan-control-ec-git
+  * build upstream: git clone https://github.com/Keyitdev/asus-fan-control-ec.git
+  * prebuilt:       sudo AFC_BINARY=/path/to/asus-fan-control-ec ./install.sh
+  * local source:   sudo AFC_SOURCE=/path/to/cloned/upstream ./install.sh"
 fi
 
 install -Dm0755 "$SRC/helper/omarchy-fanctl" "$WRAPPER"
